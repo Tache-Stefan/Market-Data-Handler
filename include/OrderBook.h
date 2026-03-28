@@ -68,7 +68,7 @@ namespace market_handler {
         void cancel_order(const uint64_t id) noexcept;
         void modify_order(const uint64_t id, const uint32_t new_price, const uint32_t new_qty) noexcept;
 
-        uint32_t match_order(const uint32_t price, const uint32_t qty, const bool is_buy);
+        [[nodiscard]] uint32_t match_order(const uint32_t price, const uint32_t qty, const bool is_buy);
 
     private:
         OrderPool _pool;
@@ -181,7 +181,7 @@ namespace market_handler {
         order->quantity = new_qty;
 
         PriceLevel &level = order->is_buy ? _bids[order->price] : _asks[order->price];
-        level.total_quantity -= (order->quantity - new_qty);
+        level.total_quantity -= (qty_reduction);
     }
 
     uint32_t OrderBook::match_order(const uint32_t price, const uint32_t qty, const bool is_buy) {
