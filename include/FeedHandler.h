@@ -6,6 +6,12 @@
 #include "OrderBook.h"
 #include "SPSCQueue.h"
 
+#ifdef _MSC_VER
+#include <intrin.h>
+#else
+#include <x86intrin.h>
+#endif
+
 namespace market_handler {
 
     class FeedHandler {
@@ -34,10 +40,12 @@ namespace market_handler {
 
     void FeedHandler::start_receive() {
         _socket.async_receive_from(
-            asio::buffer(&_recv_buffer, sizeof(PacketPayload)),
+            asio::buffer(reinterpret_cast<char*>(&_recv_buffer) + 8, sizeof(PacketPayload) - 8),
             _remote_endpoint,
             [this](std::error_code ec, std::size_t bytes_recvd) {
-                if (!ec && bytes_recvd == sizeof(PacketPayload)) {
+                _recv_buffer.ingress_tsc = __rdtsc();
+
+                if (!ec && bytes_recvd == sizeof(PacketPayload) - 8) {
                     if (!_queue.push(_recv_buffer)) [[unlikely]] {
                         ++dropped_packets;
                     }

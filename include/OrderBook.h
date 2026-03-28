@@ -59,7 +59,7 @@ namespace market_handler {
     class OrderBook {
     public:
         static constexpr size_t MAX_TICKS = 262144;
-        static constexpr size_t MAX_ORDERS = 250000;
+        static constexpr size_t MAX_ORDERS = 1500000;
 
         explicit OrderBook()
             : _pool(MAX_ORDERS),

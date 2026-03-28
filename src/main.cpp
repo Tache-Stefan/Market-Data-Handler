@@ -1,11 +1,14 @@
 #include <iostream>
 #include <thread>
 #include <atomic>
+#include <vector>
+#include <algorithm>
 #include <asio.hpp>
 #include "Protocol.h"
 #include "FeedHandler.h"
 #include "OrderBook.h"
 #include "SPSCQueue.h"
+#include "ThreadUtils.h"
 
 #ifdef _MSC_VER
 #include <intrin.h>
@@ -18,10 +21,14 @@ using namespace market_handler;
 std::atomic<bool> running{true};
 
 void run_matching_engine(SPSCQueue<PacketPayload> &queue, OrderBook &book) {
+    pin_current_thread_to_core(3);
+
     std::cout << "[Worker Thread] Matching engine started. Polling queue...\n";
 
     PacketPayload packet;
     uint64_t messages_processed = 0;
+    std::vector<uint64_t> cycle_deltas;
+    cycle_deltas.reserve(1000000);
 
     while (running.load(std::memory_order_acquire)) {
         if (queue.pop(packet)) {
@@ -43,6 +50,10 @@ void run_matching_engine(SPSCQueue<PacketPayload> &queue, OrderBook &book) {
                 default:
                     break;
             }
+
+            uint64_t egress_tsc = __rdtsc();
+            cycle_deltas.push_back(egress_tsc - packet.ingress_tsc);
+
             ++messages_processed;
         } else {
             _mm_pause();
@@ -50,14 +61,35 @@ void run_matching_engine(SPSCQueue<PacketPayload> &queue, OrderBook &book) {
     }
 
     std::cout << "[Worker Thread] Matching engine stopped. Total messages processed: " << messages_processed << "\n";
+
+    if (!cycle_deltas.empty()) {
+        std::sort(cycle_deltas.begin(), cycle_deltas.end());
+        
+        uint64_t median_cycles = cycle_deltas[cycle_deltas.size() / 2];
+        uint64_t p99_cycles = cycle_deltas[cycle_deltas.size() * 0.99];
+        uint64_t max_cycles = cycle_deltas.back();
+
+        // (3187 MHz CPU)
+        const double ns_per_cycle = 0.313;
+
+        std::cout << "\n=== TICK-TO-TRADE LATENCY REPORT ===\n";
+        std::cout << "Median Latency: " << (median_cycles * ns_per_cycle) << " ns (" << median_cycles << " cycles)\n";
+        std::cout << "99th Percentile: " << (p99_cycles * ns_per_cycle) << " ns (" << p99_cycles << " cycles)\n";
+        std::cout << "Max Latency:    " << (max_cycles * ns_per_cycle) << " ns (" << max_cycles << " cycles)\n";
+        std::cout << "====================================\n";
+    }
 }
 
 int main() {
     try {
+        SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS);
+
         SPSCQueue<PacketPayload> queue(1048576);
         OrderBook book;
 
         std::thread worker_thread(run_matching_engine, std::ref(queue), std::ref(book));
+
+        pin_current_thread_to_core(2);
 
         asio::io_context io_context;
         FeedHandler feed_handler(io_context, 12345, queue);

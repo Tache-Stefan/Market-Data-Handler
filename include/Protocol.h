@@ -31,13 +31,15 @@ namespace market_handler {
     };
 
     struct alignas(64) PacketPayload {
+        uint64_t ingress_tsc;
+
         union {
             MessageHeader header;
             AddOrderMsg add_msg;
             CancelOrderMsg cancel_msg;
             ModifyOrderMsg modify_msg;
 
-            uint8_t _padding[64];
+            uint8_t _padding[56];
         };
     };
 
