@@ -187,7 +187,7 @@ namespace market_handler {
 
         while (remaining_qty > 0) {
             bool is_match = is_buy ? (price >= _best_ask) : (price <= _best_bid);
-            if (!is_match) {
+            if (!is_match) [[likely]] {
                 break;
             }
 
