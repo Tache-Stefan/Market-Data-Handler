@@ -67,14 +67,14 @@ cmake -S . -B build
 cmake --build build --config Release
 ```
 
-# Running the Engine
+### Running the Engine
 
 ```bash
 # Start the Feed Handler (Listens on UDP 12345)
 ./build/Release/Market-Handler
 ```
 
-# Running the Simulator and Tests
+### Running the Simulator and Tests
 
 ```bash
 # In a separate terminal, blast the engine with 1,000,000 binary UDP packets
