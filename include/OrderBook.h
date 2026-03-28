@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <vector>
 #include <unordered_map>
-#include <iostream>
 #include "PriceBitSet.h"
 
 namespace market_handler {
@@ -67,8 +66,10 @@ namespace market_handler {
         void add_order(const uint64_t id, const uint32_t price, const uint32_t qty, const bool is_buy) noexcept;
         void cancel_order(const uint64_t id) noexcept;
         void modify_order(const uint64_t id, const uint32_t new_price, const uint32_t new_qty) noexcept;
-
         [[nodiscard]] uint32_t match_order(const uint32_t price, const uint32_t qty, const bool is_buy);
+
+        [[nodiscard]] inline uint32_t get_best_bid() const noexcept { return _best_bid; }
+        [[nodiscard]] inline uint32_t get_best_ask() const noexcept { return _best_ask; }
 
     private:
         OrderPool _pool;
@@ -133,17 +134,11 @@ namespace market_handler {
         PriceLevel &level = order->is_buy ? _bids[order->price] : _asks[order->price];
         level.total_quantity -= order->quantity;
 
-        if (order->prev) {
-            order->prev->next = order->next;
-        } else {
-            level.head = order->next;
-        }
+        if (order->prev) order->prev->next = order->next;
+        else level.head = order->next;
 
-        if (order->next) {
-            order->next->prev = order->prev;
-        } else {
-            level.tail = order->prev;
-        }
+        if (order->next) order->next->prev = order->prev;
+        else level.tail = order->prev;
 
         if (level.total_quantity == 0) {
             if (order->is_buy) _bid_bits.clear(order->price);
@@ -202,12 +197,30 @@ namespace market_handler {
                 
                 remaining_qty -= trade_qty;
                 resting_order->quantity -= trade_qty;
+                level.total_quantity -= trade_qty;
 
                 if (resting_order->quantity == 0) {
                     Order *next_order = resting_order->next;
-                    cancel_order(resting_order->id);
+                    
+                    if (resting_order->prev) resting_order->prev->next = resting_order->next;
+                    else level.head = resting_order->next;
+
+                    if (resting_order->next) resting_order->next->prev = resting_order->prev;
+                    else level.tail = resting_order->prev;
+
+                    _order_map.erase(resting_order->id);
+                    _pool.deallocate(resting_order);
+
                     resting_order = next_order;
                 }
+            }
+
+            if (level.total_quantity == 0) {
+                if (is_buy) _ask_bits.clear(match_price);
+                else _bid_bits.clear(match_price);
+
+                _best_bid = _bid_bits.get_highest();
+                _best_ask = _ask_bits.get_lowest();
             }
         }
 
