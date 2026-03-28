@@ -6,15 +6,18 @@
 #include "PriceBitSet.h"
 
 namespace market_handler {
+
+    #pragma pack(push, 1)
     struct Order {
         uint64_t id;
-        uint32_t price;
-        uint32_t quantity;
-        bool is_buy;
-
         Order *prev = nullptr;
         Order *next = nullptr;
+        uint32_t price;
+
+        uint32_t quantity : 31;
+        uint32_t is_buy   : 1;
     };
+    #pragma pack(pop)
 
     struct PriceLevel {
         Order *head = nullptr;
@@ -193,7 +196,7 @@ namespace market_handler {
 
             Order *resting_order = level.head;
             while (resting_order && remaining_qty > 0) {
-                uint32_t trade_qty = std::min(resting_order->quantity, remaining_qty);
+                uint32_t trade_qty = std::min(static_cast<uint32_t>(resting_order->quantity), remaining_qty);
                 
                 remaining_qty -= trade_qty;
                 resting_order->quantity -= trade_qty;
