@@ -59,12 +59,13 @@ namespace market_handler {
     class OrderBook {
     public:
         static constexpr size_t MAX_TICKS = 262144;
+        static constexpr size_t MAX_ORDERS = 250000;
 
-        explicit OrderBook(const size_t max_orders = 1000000) : _pool(max_orders) {
-            _order_map.reserve(max_orders);
-            _bids.reserve(MAX_TICKS);
-            _asks.reserve(MAX_TICKS);
-        }
+        explicit OrderBook()
+            : _pool(MAX_ORDERS),
+              _bids(MAX_TICKS),
+              _asks(MAX_TICKS),
+              _order_map(MAX_ORDERS, nullptr) {}
 
         void add_order(const uint64_t id, const uint32_t price, const uint32_t qty, const bool is_buy) noexcept;
         void cancel_order(const uint64_t id) noexcept;
@@ -79,7 +80,7 @@ namespace market_handler {
 
         std::vector<PriceLevel> _bids;
         std::vector<PriceLevel> _asks;
-        std::unordered_map<uint64_t, Order*> _order_map;
+        std::vector<Order*> _order_map;
 
         PriceBitSet<MAX_TICKS> _bid_bits;
         PriceBitSet<MAX_TICKS> _ask_bits;
@@ -128,12 +129,11 @@ namespace market_handler {
     }
 
     void OrderBook::cancel_order(const uint64_t id) noexcept {
-        auto it = _order_map.find(id);
-        if (it == _order_map.end()) [[unlikely]] {
+        auto order = _order_map[id];
+        if (!order) [[unlikely]] {
             return;
         }
 
-        Order *order = it->second;
         PriceLevel &level = order->is_buy ? _bids[order->price] : _asks[order->price];
         level.total_quantity -= order->quantity;
 
@@ -151,17 +151,15 @@ namespace market_handler {
             _best_ask = _ask_bits.get_lowest();
         }
 
-        _order_map.erase(it);
+        _order_map[id] = nullptr;
         _pool.deallocate(order);
     }
 
     void OrderBook::modify_order(const uint64_t id, const uint32_t new_price, const uint32_t new_qty) noexcept {
-        auto it = _order_map.find(id);
-        if (it == _order_map.end()) [[unlikely]] {
+        auto order = _order_map[id];
+        if (!order) [[unlikely]] {
             return;
         }
-
-        Order *order = it->second;
 
         if (new_price != order->price || new_qty >= order->quantity) {
             const bool is_buy = order->is_buy;
@@ -211,7 +209,7 @@ namespace market_handler {
                     if (resting_order->next) resting_order->next->prev = resting_order->prev;
                     else level.tail = resting_order->prev;
 
-                    _order_map.erase(resting_order->id);
+                    _order_map[resting_order->id] = nullptr;
                     _pool.deallocate(resting_order);
 
                     resting_order = next_order;

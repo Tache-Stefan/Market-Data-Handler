@@ -4,7 +4,7 @@
 using namespace market_handler;
 
 static void BM_Modify_InPlace(benchmark::State& state) {
-    OrderBook book(100000);
+    OrderBook book;
     uint64_t id = 1;
 
     for (auto _ : state) {
@@ -21,7 +21,7 @@ static void BM_Modify_InPlace(benchmark::State& state) {
 BENCHMARK(BM_Modify_InPlace);
 
 static void BM_Modify_CancelReplace(benchmark::State& state) {
-    OrderBook book(100000);
+    OrderBook book;
     uint64_t id = 1;
 
     for (auto _ : state) {
@@ -38,7 +38,7 @@ static void BM_Modify_CancelReplace(benchmark::State& state) {
 BENCHMARK(BM_Modify_CancelReplace);
 
 static void BM_Match_AggressiveOrder(benchmark::State& state) {
-    OrderBook book(100000);
+    OrderBook book;
     uint64_t id = 1;
 
     for (auto _ : state) {
