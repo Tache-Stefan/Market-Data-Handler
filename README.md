@@ -26,7 +26,7 @@ Performance is tracked using Google Benchmark and hardware `__rdtsc()` (Read Tim
 
 *Tested on an Intel i5-11320H CPU @ 3.18GHz*
 
-### Tick-to-Trade Latency (RDTSC)
+### Latency (RDTSC)
 Measures the time from the exact nanosecond the Asio socket receives the UDP packet, across the lock-free queue thread boundary, through the OrderBook spread execution, to the final match.
 
 | Percentile | Cycles | Nanoseconds |

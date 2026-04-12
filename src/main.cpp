@@ -16,6 +16,13 @@
 #include <immintrin.h>
 #endif
 
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <sched.h>
+#include <cstring>
+#endif
+
 using namespace market_handler;
 
 std::atomic<bool> running{true};
@@ -72,7 +79,7 @@ void run_matching_engine(SPSCQueue<PacketPayload> &queue, OrderBook &book) {
         // (3187 MHz CPU)
         const double ns_per_cycle = 0.313;
 
-        std::cout << "\n=== TICK-TO-TRADE LATENCY REPORT ===\n";
+        std::cout << "\n=== LATENCY REPORT ===\n";
         std::cout << "Median Latency: " << (median_cycles * ns_per_cycle) << " ns (" << median_cycles << " cycles)\n";
         std::cout << "99th Percentile: " << (p99_cycles * ns_per_cycle) << " ns (" << p99_cycles << " cycles)\n";
         std::cout << "Max Latency:    " << (max_cycles * ns_per_cycle) << " ns (" << max_cycles << " cycles)\n";
@@ -82,7 +89,17 @@ void run_matching_engine(SPSCQueue<PacketPayload> &queue, OrderBook &book) {
 
 int main() {
     try {
+#ifdef _WIN32
         SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS);
+#else
+        struct sched_param sp;
+        sp.sched_priority = sched_get_priority_max(SCHED_FIFO);
+        if (sched_setscheduler(0, SCHED_FIFO, &sp) == -1) {
+            std::cerr << "[Warning] Failed to set real-time priority: " 
+                      << std::strerror(errno) 
+                      << " (Are you running as root/sudo?)\n";
+        }
+#endif
 
         SPSCQueue<PacketPayload> queue(1048576);
         OrderBook book;
