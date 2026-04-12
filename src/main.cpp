@@ -27,6 +27,26 @@ using namespace market_handler;
 
 std::atomic<bool> running{true};
 
+static double estimate_ns_per_cycle(int sample_ms = 200) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    uint64_t tsc_start = __rdtsc();
+    auto t_start = std::chrono::high_resolution_clock::now();
+    std::this_thread::sleep_for(std::chrono::milliseconds(sample_ms));
+    auto t_end = std::chrono::high_resolution_clock::now();
+    uint64_t tsc_end = __rdtsc();
+
+    std::chrono::duration<double> elapsed = t_end - t_start;
+    double seconds = elapsed.count();
+    if (seconds <= 0.0) {
+        return 0.313; // fallback to hardcoded value
+    }
+
+    double cycles = double(tsc_end - tsc_start);
+    double hz = cycles / seconds;
+    return 1e9 / hz; // ns per cycle
+}
+
 void run_matching_engine(SPSCQueue<PacketPayload> &queue, OrderBook &book) {
     pin_current_thread_to_core(3);
 
@@ -76,8 +96,9 @@ void run_matching_engine(SPSCQueue<PacketPayload> &queue, OrderBook &book) {
         uint64_t p99_cycles = cycle_deltas[cycle_deltas.size() * 0.99];
         uint64_t max_cycles = cycle_deltas.back();
 
-        // (3187 MHz CPU)
-        const double ns_per_cycle = 0.313;
+        double ns_per_cycle = estimate_ns_per_cycle();
+        double measured_mhz = (1e9 / ns_per_cycle) / 1e6;
+        std::cout << "(measured CPU freq: " << measured_mhz << " MHz)\n";
 
         std::cout << "\n=== LATENCY REPORT ===\n";
         std::cout << "Median Latency: " << (median_cycles * ns_per_cycle) << " ns (" << median_cycles << " cycles)\n";
