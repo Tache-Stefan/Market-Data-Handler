@@ -8,6 +8,7 @@
 namespace market_handler {
 
     #pragma pack(push, 1)
+    alignas(32)
     struct Order {
         uint64_t id;
         Order *prev = nullptr;
