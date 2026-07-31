@@ -162,7 +162,7 @@ namespace market_handler {
             return;
         }
 
-        if (new_price != order->price || new_qty >= order->quantity) {
+        if (new_price != order->price || new_qty > order->quantity) {
             const bool is_buy = order->is_buy;
             cancel_order(id);
             add_order(id, new_price, new_qty, is_buy);
