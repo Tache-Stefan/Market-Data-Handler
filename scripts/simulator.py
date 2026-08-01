@@ -18,18 +18,18 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 def create_add_order(order_id, price, qty, side):
     # 'A' (1) + id (8) + price (4) + qty (4) + side (1) = 18 bytes. 
-    # Need 46 padding bytes to reach 64.
-    return struct.pack('<cQIIc46x', b'A', order_id, price, qty, side)
+    # Need 38 padding bytes to reach 56.
+    return struct.pack('<cQIIc38x', b'A', order_id, price, qty, side)
 
 def create_cancel_order(order_id):
     # 'X' (1) + id (8) = 9 bytes. 
-    # Need 55 padding bytes to reach 64.
-    return struct.pack('<cQ55x', b'X', order_id)
+    # Need 47 padding bytes to reach 56.
+    return struct.pack('<cQ47x', b'X', order_id)
 
 def create_modify_order(order_id, new_price, new_qty):
     # 'M' (1) + id (8) + price (4) + qty (4) = 17 bytes.
-    # Need 47 padding bytes to reach 64.
-    return struct.pack('<cQII47x', b'M', order_id, new_price, new_qty)
+    # Need 39 padding bytes to reach 56.
+    return struct.pack('<cQII39x', b'M', order_id, new_price, new_qty)
 
 
 def run_simulation(num_messages=1000000):

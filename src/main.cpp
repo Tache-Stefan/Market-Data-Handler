@@ -48,17 +48,20 @@ static double estimate_ns_per_cycle(int sample_ms = 200) {
 }
 
 void run_matching_engine(SPSCQueue<PacketPayload> &queue, OrderBook &book) {
-    pin_current_thread_to_core(3);
+    pin_current_thread_to_core(4);
 
     std::cout << "[Worker Thread] Matching engine started. Polling queue...\n";
 
     PacketPayload packet;
     uint64_t messages_processed = 0;
-    std::vector<uint64_t> cycle_deltas;
-    cycle_deltas.reserve(1000000);
+    static constexpr size_t MAX_SAMPLES = 1'000'000;
+    std::vector<uint64_t> cycle_deltas(MAX_SAMPLES);
+    size_t sample_count = 0;
+    uint64_t idle_polls = 0;
 
     while (running.load(std::memory_order_acquire)) {
         if (queue.pop(packet)) {
+            idle_polls = 0;
             switch (packet.header.message_type) {
                 case 'A':
                     book.add_order(packet.add_msg.order_id, 
@@ -79,22 +82,26 @@ void run_matching_engine(SPSCQueue<PacketPayload> &queue, OrderBook &book) {
             }
 
             uint64_t egress_tsc = __rdtsc();
-            cycle_deltas.push_back(egress_tsc - packet.ingress_tsc);
+            if (sample_count < MAX_SAMPLES) [[likely]] {
+                cycle_deltas[sample_count++] = egress_tsc - packet.ingress_tsc;
+            }
 
             ++messages_processed;
         } else {
-            _mm_pause();
+           if (++idle_polls > 64) _mm_pause();
         }
     }
 
     std::cout << "[Worker Thread] Matching engine stopped. Total messages processed: " << messages_processed << "\n";
 
-    if (!cycle_deltas.empty()) {
-        std::sort(cycle_deltas.begin(), cycle_deltas.end());
+    if (sample_count > 0) {
+        const auto begin = cycle_deltas.begin();
+        const auto end = begin + sample_count;
+        std::sort(begin, end);
         
-        uint64_t median_cycles = cycle_deltas[cycle_deltas.size() / 2];
-        uint64_t p99_cycles = cycle_deltas[cycle_deltas.size() * 0.99];
-        uint64_t max_cycles = cycle_deltas.back();
+        uint64_t median_cycles = cycle_deltas[sample_count / 2];
+        uint64_t p99_cycles = cycle_deltas[static_cast<size_t>(sample_count * 0.99)];
+        uint64_t max_cycles = cycle_deltas[sample_count - 1];
 
         double ns_per_cycle = estimate_ns_per_cycle();
         double measured_mhz = (1e9 / ns_per_cycle) / 1e6;

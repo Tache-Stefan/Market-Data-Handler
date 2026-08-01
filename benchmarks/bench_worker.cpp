@@ -1,6 +1,8 @@
 #include <benchmark/benchmark.h>
 #include <vector>
 #include <random>
+#include <chrono>
+#include <memory>
 
 #include "OrderBook.h"
 #include "SPSCQueue.h"
@@ -41,51 +43,50 @@ std::vector<PacketPayload> generate_market_burst(size_t count) {
     return burst;
 }
 
+static inline void dispatch(OrderBook& book, const PacketPayload& p) noexcept {
+    switch (p.header.message_type) {
+        case 'A':
+            book.add_order(p.add_msg.order_id, p.add_msg.price,
+                           p.add_msg.quantity, p.add_msg.is_buy == 'B');
+            break;
+        case 'X':
+            book.cancel_order(p.cancel_msg.order_id);
+            break;
+        case 'M':
+            book.modify_order(p.modify_msg.order_id, p.modify_msg.new_price,
+                              p.modify_msg.new_quantity);
+            break;
+        default:
+            break;
+    }
+}
+
 static void BM_Worker_Throughput(benchmark::State& state) {
-    const size_t burst_size = state.range(0);
-    
-    SPSCQueue<PacketPayload> queue(65536); 
-    
-    auto burst = generate_market_burst(burst_size);
+    const size_t burst_size = static_cast<size_t>(state.range(0));
+    const auto burst = generate_market_burst(burst_size);
+
+    SPSCQueue<PacketPayload> queue(1 << 17);
+    auto book = std::make_unique<OrderBook>();
 
     for (auto _ : state) {
-        state.PauseTiming();
-        OrderBook book;
-        
-        for (const auto& packet : burst) {
-            queue.push(packet);
-        }
-        state.ResumeTiming();
+        for (const auto& p : burst) queue.push(p);
 
-        PacketPayload current_packet;
-        size_t processed = 0;
-        
-        while (processed < burst_size) {
-            if (queue.pop(current_packet)) {
-                switch (current_packet.header.message_type) {
-                    case 'A':
-                        book.add_order(current_packet.add_msg.order_id, 
-                                       current_packet.add_msg.price, 
-                                       current_packet.add_msg.quantity, 
-                                       current_packet.add_msg.is_buy);
-                        break;
-                    case 'X':
-                        book.cancel_order(current_packet.cancel_msg.order_id);
-                        break;
-                    case 'M':
-                        book.modify_order(current_packet.modify_msg.order_id,
-                                          current_packet.modify_msg.new_price,
-                                          current_packet.modify_msg.new_quantity);
-                        break;
-                }
-                processed++;
-            }
+        PacketPayload pkt;
+        const auto t0 = std::chrono::steady_clock::now();
+        for (size_t i = 0; i < burst_size; ++i) {
+            while (!queue.pop(pkt)) {}
+            dispatch(*book, pkt);
         }
+        const auto t1 = std::chrono::steady_clock::now();
+
+        state.SetIterationTime(std::chrono::duration<double>(t1 - t0).count());
+        benchmark::ClobberMemory();
+
+        book = std::make_unique<OrderBook>();   // untimed reset; pool would otherwise exhaust
     }
-
     state.SetItemsProcessed(state.iterations() * burst_size);
 }
 
-BENCHMARK(BM_Worker_Throughput)->Arg(1000)->Arg(10000)->Arg(20000);
+BENCHMARK(BM_Worker_Throughput)->Arg(1000)->Arg(10000)->Arg(20000)->UseManualTime();
 
 BENCHMARK_MAIN();

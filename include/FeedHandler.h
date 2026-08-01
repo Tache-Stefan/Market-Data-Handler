@@ -38,7 +38,7 @@ namespace market_handler {
         void start_receive();
     };
 
-    void FeedHandler::start_receive() {
+    inline void FeedHandler::start_receive() {
         _socket.async_receive_from(
             asio::buffer(reinterpret_cast<char*>(&_recv_buffer) + 8, sizeof(PacketPayload) - 8),
             _remote_endpoint,

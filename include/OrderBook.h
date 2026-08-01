@@ -2,14 +2,12 @@
 
 #include <cstdint>
 #include <vector>
-#include <unordered_map>
 #include "PriceBitSet.h"
 
 namespace market_handler {
 
     #pragma pack(push, 1)
-    alignas(32)
-    struct Order {
+    struct alignas(32) Order {
         uint64_t id;
         Order *prev = nullptr;
         Order *next = nullptr;
@@ -90,15 +88,14 @@ namespace market_handler {
         uint32_t _best_ask = UINT32_MAX;
     };
 
-    void OrderBook::add_order(const uint64_t id, const uint32_t price, const uint32_t qty, const bool is_buy) noexcept {
-        Order *order = _pool.allocate();
-        if (!order) [[unlikely]] {
+    inline void OrderBook::add_order(const uint64_t id, const uint32_t price, const uint32_t qty, const bool is_buy) noexcept {
+        const uint32_t remaining_qty = match_order(price, qty, is_buy);
+        if (remaining_qty == 0) {
             return;
         }
 
-        int remaining_qty = match_order(price, qty, is_buy);
-        if (remaining_qty == 0) {
-            _pool.deallocate(order);
+        Order *order = _pool.allocate();
+        if (!order) [[unlikely]] {
             return;
         }
 
@@ -125,11 +122,18 @@ namespace market_handler {
             level.tail = order;
         }
 
-        _best_bid = _bid_bits.get_highest();
-        _best_ask = _ask_bits.get_lowest();
+        if (is_buy) {
+            if (price > _best_bid) {
+                _best_bid = price;
+            }
+        } else {
+            if (price < _best_ask) {
+                _best_ask = price;
+            }
+        }
     }
 
-    void OrderBook::cancel_order(const uint64_t id) noexcept {
+    inline void OrderBook::cancel_order(const uint64_t id) noexcept {
         auto order = _order_map[id];
         if (!order) [[unlikely]] {
             return;
@@ -156,7 +160,7 @@ namespace market_handler {
         _pool.deallocate(order);
     }
 
-    void OrderBook::modify_order(const uint64_t id, const uint32_t new_price, const uint32_t new_qty) noexcept {
+    inline void OrderBook::modify_order(const uint64_t id, const uint32_t new_price, const uint32_t new_qty) noexcept {
         auto order = _order_map[id];
         if (!order) [[unlikely]] {
             return;
@@ -181,7 +185,7 @@ namespace market_handler {
         level.total_quantity -= (qty_reduction);
     }
 
-    uint32_t OrderBook::match_order(const uint32_t price, const uint32_t qty, const bool is_buy) {
+    inline uint32_t OrderBook::match_order(const uint32_t price, const uint32_t qty, const bool is_buy) {
         uint32_t remaining_qty = qty;
 
         while (remaining_qty > 0) {
